@@ -5,6 +5,8 @@ import uuid
 from datetime import date
 from pathlib import Path
 
+from weather_agent.security import looks_like_secret
+
 KINDS = ("profile", "preference", "plan", "outcome")
 DEFAULT_PATH = Path.home() / ".weather_agent" / "memory.json"
 
@@ -35,6 +37,8 @@ class MemoryStore:
         if kind not in KINDS:
             raise ValueError(f"unknown memory kind '{kind}'; expected one of {', '.join(KINDS)}")
         content = content.strip()
+        if looks_like_secret(content):
+            raise ValueError("refusing to store what looks like an API key")
         for entry in self.entries:
             if entry["kind"] == kind and entry["content"].lower() == content.lower():
                 return entry
