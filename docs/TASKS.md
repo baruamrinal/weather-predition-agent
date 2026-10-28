@@ -6,6 +6,8 @@ the code is written and passes after.
 **Conventions**
 - Unit tests run offline. HTTP is faked at `weather_tools._get_json`.
 - Tests that hit real APIs are marked `@pytest.mark.live` and skipped by default (`pytest -m live` to run them).
+- CI requires at least 80% line + branch coverage of `weather_agent/`; below that, the bot does not approve the PR.
+  Check locally with `pytest --cov --cov-fail-under=80`.
 - Statuses: `[ ]` todo · `[~]` in progress · `[x]` done.
 
 ---

@@ -11,6 +11,8 @@ permissions:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    outputs:
+      coverage: ${{ steps.coverage.outputs.total }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,8 +21,11 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements-dev.txt
-      # Live tests (real APIs) are excluded by pytest.ini
-      - run: pytest -v
+      # Live tests (real APIs) are excluded by pytest.ini.
+      # Fails the job, and so blocks bot approval, when line + branch coverage is under 80%.
+      - run: pytest -v --cov --cov-report=term-missing --cov-fail-under=80
+      - id: coverage
+        run: echo "total=$(coverage report --format=total)" >> "$GITHUB_OUTPUT"
 
   approve:
     name: bot approval
@@ -36,4 +41,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: gh pr review "$PR_URL" --approve --body "All tests passed on ${HEAD_SHA::7}. Approved automatically by CI."
+          COVERAGE: ${{ needs.pytest.outputs.coverage }}
+        run: gh pr review "$PR_URL" --approve --body "All tests passed and coverage is ${COVERAGE}% (minimum 80%) on ${HEAD_SHA::7}. Approved automatically by CI."
