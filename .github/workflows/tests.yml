@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Minimum line + branch coverage; below it the tests job fails and the bot does not approve.
+  COVERAGE_MIN: 80
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
@@ -22,10 +26,35 @@ jobs:
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements-dev.txt
       # Live tests (real APIs) are excluded by pytest.ini.
-      # Fails the job, and so blocks bot approval, when line + branch coverage is under 80%.
-      - run: pytest -v --cov --cov-report=term-missing --cov-fail-under=80
+      - name: Run tests (coverage must be at least ${{ env.COVERAGE_MIN }}%)
+        run: |
+          echo "Requirement: line + branch coverage of weather_agent must be at least ${COVERAGE_MIN}%."
+          pytest -v --cov --cov-report=term-missing --cov-fail-under="$COVERAGE_MIN"
+      # Runs even when the tests fail, so the run page always shows the requirement and the result.
       - id: coverage
-        run: echo "total=$(coverage report --format=total)" >> "$GITHUB_OUTPUT"
+        name: Report coverage against requirement
+        if: always()
+        run: |
+          total=$(coverage report --format=total --precision=2 2>/dev/null) || true
+          # No coverage data (e.g. tests crashed before running) prints a message, not a number
+          [[ "$total" =~ ^[0-9]+(\.[0-9]+)?$ ]] || total="n/a"
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          if [ "$total" != "n/a" ] && awk -v t="$total" -v m="$COVERAGE_MIN" 'BEGIN { exit !(t >= m) }'; then
+            status="✅ Met"
+            echo "::notice title=Coverage requirement met::Coverage is ${total}% (minimum ${COVERAGE_MIN}%)."
+          else
+            status="❌ Not met"
+            echo "::error title=Coverage requirement not met::Coverage is ${total}% (minimum ${COVERAGE_MIN}%)."
+          fi
+          {
+            echo "### Test coverage"
+            echo ""
+            echo "| Required | Actual | Status |"
+            echo "|---|---|---|"
+            echo "| ${COVERAGE_MIN}% | ${total}% | ${status} |"
+            echo ""
+            echo "Line + branch coverage of \`weather_agent\`. Below the requirement, the job fails and the bot does not approve."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   approve:
     name: bot approval
@@ -42,4 +71,4 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           COVERAGE: ${{ needs.pytest.outputs.coverage }}
-        run: gh pr review "$PR_URL" --approve --body "All tests passed and coverage is ${COVERAGE}% (minimum 80%) on ${HEAD_SHA::7}. Approved automatically by CI."
+        run: gh pr review "$PR_URL" --approve --body "All tests passed and coverage is ${COVERAGE}% (minimum ${COVERAGE_MIN}%) on ${HEAD_SHA::7}. Approved automatically by CI."
